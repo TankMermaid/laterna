@@ -21,10 +21,18 @@
    #:args (slides)
    slides))
 
+(unless (file-exists? fn)
+  (raise-user-error (format "file \"~a\" doesn't exist" fn)))
+
 ; global set of slides (as picts)
 (define (get-slide-picts)
-  (get-slides-as-picts fn (width) (height) #t))
+  (with-handlers ([exn:fail? (lambda (e) (displayln "failed to get slides"))])
+    (get-slides-as-picts fn (width) (height) #t)))
 (define slide-picts (get-slide-picts))
+
+(when (void? slide-picts)
+  (raise-user-error "failed to get slides; slideshow probably broken"))
+
 (define current-slide-n 0)
 
 ; update the global set of slides
