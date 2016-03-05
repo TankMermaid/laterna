@@ -2,16 +2,24 @@
 
 (provide slide/title
          bitmap/scale
+         bitmap/relative-width
          enum
          title-slide
          pin-over*)
 
 (require slideshow/text)
 (require racket/draw)
+(provide (all-from-out racket/draw)
+         (all-from-out slideshow/text))
 
 ; a shorthand for defining the title, which most slides should have
 (define-syntax-rule (slide/title title x ...)
   (slide #:title title x ...))
+
+(define-syntax-rule (bitmap/relative-width filename relative-width)
+  (let* ([bm (bitmap (read-bitmap filename))]
+         [new-scale (/ (* relative-width (client-w)) (pict-width bm))])
+    (scale bm new-scale)))
 
 (define-syntax-rule (bitmap/scale filename scale)
   (bitmap (read-bitmap filename #:backing-scale (/ 1.0 scale))))
