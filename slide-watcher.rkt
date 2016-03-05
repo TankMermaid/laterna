@@ -25,9 +25,8 @@
   (raise-user-error (format "file \"~a\" doesn't exist" fn)))
 
 ; global set of slides (as picts)
-(define (get-slide-picts)
-  (with-handlers ([exn:fail? (lambda (e) (displayln "failed to get slides"))])
-    (get-slides-as-picts fn (width) (height) #t)))
+(define (get-slide-picts) (get-slides-as-picts fn (width) (height) #t))
+
 (define slide-picts (get-slide-picts))
 
 (when (void? slide-picts)
@@ -36,7 +35,9 @@
 (define current-slide-n 0)
 
 ; update the global set of slides
-(define (update-slide-picts) (set! slide-picts (get-slide-picts)))
+(define (update-slide-picts)
+  (let ([new-slides (get-slide-picts)])
+    (set! slide-picts new-slides)))
 
 ; get the nth slide and turn it into a bitmap for plotting
 (define (get-bitmap-slide n)
@@ -89,8 +90,10 @@
          ; loop, waiting either for a change in the file or an exit message
          (sync (handle-evt exit-ch (lambda (x) (void)))
                (handle-evt fce (lambda (x)
-                                 (update-slide-picts)
-                                 (send frame refresh)
+                                 (with-handlers ([exn:fail? (lambda (e) (displayln "failed to get slides"))])
+                                   (update-slide-picts)
+                                   (send frame refresh)
+                                   (displayln "reloaded slides"))
                                  (sleep (nap-time))
                                  ; start a new file change watching event
                                  (set! fce (filesystem-change-evt fn))
