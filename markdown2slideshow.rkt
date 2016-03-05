@@ -1,6 +1,38 @@
 #lang racket
 
-(require markdown)
+(require parser-tools/lex
+         ;(prefix-in sre: parser-tools/lex-sre)
+         parser-tools/yacc)
+
+(define-tokens a (LETTER FLAG))
+(define-empty-tokens b (EOF BREAK))
+
+(define lexer1
+  (lexer
+   [(union "% " "# " "## ") (token-FLAG lexeme)]
+   [(char-complement "\n") (token-LETTER lexeme)]
+   [(eof) (token-EOF)]
+   [(repetition 1 +inf.0 "\n") (token-BREAK)]))
+
+(define-struct line-exp (flag content))
+
+(define parser1
+  (parser
+   (start lines)
+   (end EOF)
+   (tokens a b)
+   (error (lambda args (map displayln args)))
+   (grammar
+    (lines ((line BREAK lines) (cons $1 $3))
+           ((line BREAK) (list $1))
+           ((line) (list $1)))
+    (line ((FLAG content) (line-exp $1 $2))
+          ((content) (line-exp 'content $1)))
+    (content ((LETTER content) (cons $1 $2))
+             ((LETTER) (list $1)))
+    )))
+
+(define inp1 "# slide 1")
 
 (define inp "# Slide 1
 Some pre-item words:
@@ -14,28 +46,13 @@ Some words.
 - An
 - Ordered
 - List
+")
 
-And other words.")
+(define lines
+  (let* ([input (open-input-string inp)])
+    (parser1 (lambda () (lexer1 input)))))
 
-(define xs (parse-markdown inp))
-
-(define (reparse x)
-  (case (car x)
-    ['h1 `(slide ,(third x))]
-    ['p `(para ,(third x))]
-    ['ul (map reparse (cddr x))]
-    ['li `(item ,(third x))]))
-
-; parse into slides
-(define (slidify xs)
-  (letrec ([f (lambda (xs slides slide-title slide-contents)
-             (cond
-               [(and (empty? xs) (null? slide-title)) slides]
-               [(empty? xs) (cons `(slide #:title ,slide-title ,@slide-contents) slides)]
-               [(and (null? slide-title) (equal? 'slide (caar xs))) (f (rest xs) '() (cadar xs) '())]
-               [(equal? 'slide (caar xs)) (f (rest xs) (cons `(slide #:title ,slide-title ,@slide-contents) slides) (cadar xs) '())]
-               [else (f (rest xs) slides slide-title (append slide-contents (list (car xs))))]))])
-    (reverse (f xs '() null '()))))
-
-(define ys (flatten (map reparse xs)))
-(pretty-print (slidify (map reparse xs)))
+(for ([line lines])
+  (let ([flag (line-exp-flag line)]
+        [content (string-join (line-exp-content line) "")])
+    (displayln content)))
