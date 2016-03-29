@@ -1,8 +1,11 @@
 #lang slideshow
 
 (provide slide/title
+         transition-slide
          bitmap/scale
+         bitmap/relative
          bitmap/relative-width
+         with-ref
          enum
          title-slide
          pin-over*)
@@ -16,10 +19,26 @@
 (define-syntax-rule (slide/title title x ...)
   (slide #:title title x ...))
 
+(define-syntax-rule (transition-slide title)
+  (slide (big (italic (para #:align 'center title)))))
+
 (define-syntax-rule (bitmap/relative-width filename relative-width)
   (let* ([bm (bitmap (read-bitmap filename))]
          [new-scale (/ (* relative-width (client-w)) (pict-width bm))])
     (scale bm new-scale)))
+
+(define-syntax-rule (bitmap/relative filename relative-scale)
+  (let* ([bm (bitmap (read-bitmap filename))]
+         [relative-width (/ (pict-width bm) (client-w))]
+         [relative-height (/ (pict-height bm) (pict-height (titleless-page)))]
+         [relative-max (max relative-width relative-height)]
+         [new-scale (/ relative-scale relative-max)])
+    (scale bm new-scale)))
+
+(define-syntax-rule (with-ref pict ref)
+  (vr-append
+   pict
+   (with-scale 0.5 (t ref))))
 
 (define-syntax-rule (bitmap/scale filename scale)
   (bitmap (read-bitmap filename #:backing-scale (/ 1.0 scale))))
