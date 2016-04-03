@@ -12,8 +12,11 @@
 
 (require slideshow/text)
 (require racket/draw)
+(require "markdown.rkt")
+
 (provide (all-from-out racket/draw)
          (all-from-out slideshow/text))
+
 
 ; a shorthand for defining the title, which most slides should have
 (define-syntax-rule (slide/title title x ...)
@@ -35,10 +38,16 @@
          [new-scale (/ relative-scale relative-max)])
     (scale bm new-scale)))
 
-(define-syntax-rule (with-ref pict ref)
-  (vr-append
-   pict
-   (with-scale 0.5 (t ref))))
+(define (with-ref pict ref #:margin [margin 0]) ; margin is for the pict
+  (if (zero? margin)
+      (vr-append
+       pict
+       (with-scale 0.5 (t ref)))
+      (vr-append
+       (vc-append
+        pict
+        (blank (pict-width pict) (* margin (pict-height pict))))
+       (with-scale 0.5 (t ref)))))
 
 (define-syntax-rule (bitmap/scale filename scale)
   (bitmap (read-bitmap filename #:backing-scale (/ 1.0 scale))))
@@ -74,9 +83,13 @@
           (bt word)))))
 
 ; title is aligned to the left of the whole slide, size 40
-(current-titlet
+#;(current-titlet
  (lambda (title)
    (para #:width (client-w) #:fill? #t (with-size 40 (bold-italic-title title)))))
+
+(current-titlet
+  (lambda (title)
+    (para #:width (client-w) #:fill? #t (with-size 40 (parse-markdown-string title #:state 'bold)))))
 
 (define-syntax-rule (enum i x0 ...)
   (let ([i2 (cond
