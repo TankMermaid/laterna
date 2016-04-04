@@ -7,13 +7,15 @@
   (member x '(normal bold italic bolditalic tt)))
 
 (provide (contract-out
-          [parse-markdown-string (-> string?
-                                     #:state state?
+          [parse-markdown-string (->* (string?)
+                                      (#:state state?)
                                      (listof pict?))]))
 
 (define-struct run (state words))
 
 (define (parse-markdown-string str #:state [state 'normal])
+  (for ([run (lex-markdown-string str state)])
+    (printf "lm | state: ~a words ~a\n" (run-state run) (run-words run)))
   (parse-runs (lex-markdown-string str state)))
 
 (define (lex-markdown-string str state)
@@ -62,6 +64,7 @@
                    (cons 'bolditalictt tt))))
 
 (define (parse-words state words)
+  (printf "pw | state: ~a words: ~a\n" state words)
   (map (hash-ref state-function-hash state) (filter non-empty-string? words)))
 
 (define (hybrid-word state1 state2 word1 word2)
@@ -80,6 +83,7 @@
          (append (parse-words state1 words1) (parse-runs (rest runs)))
          (let* ([new-run2 (run state2 (rest words2))]
                 [new-rest-runs (cons new-run2 more-runs)])
+           (printf "pr | mashing ~a and ~a\n" (last words1) (first words2))
            (append (parse-words state1 (drop-right words1 1))
                    (list (hybrid-word state1 state2 (last words1) (first words2)))
                    (parse-runs new-rest-runs))))]))
