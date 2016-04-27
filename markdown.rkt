@@ -4,54 +4,37 @@
          slideshow/text)
 
 (define (state? x)
-  (member x '(normal bold italic bolditalic tt)))
+  (member x '(normal bold italic bolditalic tt boldtt)))
 
 (provide (contract-out
           [parse-markdown-string (->* (string?)
                                       (#:state state?)
-                                     (listof pict?))]))
+                                      (listof pict?))]))
 
-(define-struct run (state words))
+(define-struct mdchar (state char)
+  #:methods gen:custom-write
+  [(define (write-proc c port mode)
+     (fprintf port "<mdchar ~a ~c>" (mdchar-state c) (mdchar-char c)))])
+
+(define-struct mdrun (state str)
+  #:methods gen:custom-write
+  [(define (write-proc r port mode)
+     (fprintf port "<mdrun ~a ~s>" (mdrun-state r) (mdrun-str r)))])
 
 (define (parse-markdown-string str #:state [state 'normal])
-  (for ([run (lex-markdown-string str state)])
-    (printf "lm | state: ~a words ~a\n" (run-state run) (run-words run)))
-  (parse-runs (lex-markdown-string str state)))
+  (let* ([chars (string->list str)]
+         [mdchars (lex-chars state chars)]
+         [words (split-mdchars mdchars)]
+         [runs (map parse-mdruns words)]
+         [picts (map mdruns->pict runs)])
+    picts))
 
-(define (lex-markdown-string str state)
-  (define (parse-chars state storage chars)
-    (match chars
-      ['() (if (empty? storage) '() (list (done-run state storage)))]
-      [(list-rest #\* #\* #\* tail) (match state
-                                      ['bolditalic (new-run 'bolditalic 'normal storage tail)]
-                                      ['normal (new-run 'normal 'bolditalic storage tail)])]
-      [(list-rest #\* #\* tail) (match state
-                                  ['italic (new-run 'italic 'bolditalic storage tail)]
-                                  ['bold (new-run 'bold 'normal storage tail)]
-                                  ['bolditalic (new-run 'bolditalic 'italic storage tail)]
-                                  ['normal (new-run 'normal 'bold storage tail)])]
-      [(list-rest #\* tail) (match state
-                              ['italic (new-run 'italic 'normal storage tail)]
-                              ['bold (new-run 'bold 'bolditalic storage tail)]
-                              ['bolditalic (new-run 'bolditalic 'bold storage tail)]
-                              ['normal (new-run 'normal 'italic storage tail)])]
-      [(list-rest #\\ #\* tail) (parse-chars state (cons #\* storage) tail)]
-      [(list-rest #\` tail) (match state
-                              ['italic (new-run 'italic 'italictt storage tail)]
-                              ['italictt (new-run 'tt 'italic storage tail)]
-                              ['bold (new-run 'bold 'boldtt storage tail)]
-                              ;['boldtt (new-run 'tt 'bold storage tail)]
-                              ['boldtt (new-run 'boldtt 'bold storage tail)]
-                              ['bolditalic (new-run 'bolditalic 'bolditalictt storage tail)]
-                              ['bolditalictt (new-run 'tt 'bolditalic storage tail)]
-                              ['tt (new-run 'tt 'normal storage tail)]
-                              ['normal (new-run 'normal 'tt storage tail)])]
-      [(list-rest #\\ #\` tail) (parse-chars state (cons #\` storage) tail)]
-      [(list-rest c tail) (parse-chars state (cons c storage) tail)]))
-  (define (done-run state chars) (run state (string-split (list->string (reverse chars)) #:trim? #f)))
-  (define (new-run old-state new-state old-chars new-chars)
-    (cons (done-run old-state old-chars) (parse-chars new-state '() new-chars)))
-  (parse-chars state '() (string->list str)))
+; take a list of runs and turn that into a pict
+; if it's just one run, easy; otherwise, you need to append them together
+(define (mdruns->pict runs)
+  (if (zero? (length runs))
+      (blank)
+      (apply hb-append (map (λ (run) ((hash-ref state-function-hash (mdrun-state run)) (mdrun-str run))) runs))))
 
 (define state-function-hash
   (make-hash (list (cons 'normal t)
@@ -59,31 +42,60 @@
                    (cons 'bold bt)
                    (cons 'bolditalic bit)
                    (cons 'tt tt)
-                   (cons 'italictt tt)
-                   (cons 'boldtt tt)
-                   (cons 'bolditalictt tt))))
+                   (cons 'boldtt tt))))
 
-(define (parse-words state words)
-  (printf "pw | state: ~a words: ~a\n" state words)
-  (map (hash-ref state-function-hash state) (filter non-empty-string? words)))
+; turn a list of mdchars into a set of runs
+(define (parse-mdruns mdchars)
+  (let ([chunks (chunk mdchars mdchar-state)])
+    (map (match-lambda
+           [(list mdchars state) (mdrun state (list->string (map mdchar-char mdchars)))]) chunks)))
 
-(define (hybrid-word state1 state2 word1 word2)
-  (hb-append ((hash-ref state-function-hash state1) word1)
-             ((hash-ref state-function-hash state2) word2)))
-  
-(define (parse-runs runs)
-  (match runs
+; break up a list into "chunks" of equal values under pred
+; returns (list (list first-elts value) ...)
+(define (chunk lst pred)
+  (define (iter storage val lst)
+    (if (empty? lst)
+        (list (list (reverse storage) val))
+        (let ([first-val (pred (first lst))])
+          (if (equal? val first-val)
+              (iter (cons (first lst) storage) val (rest lst))
+              (cons (list (reverse storage) val) (iter (list (first lst)) first-val (rest lst)))))))
+  (if (empty? lst)
+      '()
+      (iter (list (first lst)) (pred (first lst)) (rest lst))))
+
+(define (split-mdchars mdchars)
+  (define (iter storage cs)
+    (if (empty? cs)
+        (list (reverse storage))
+        (let ([first-is-space (equal? #\space (mdchar-char (first cs)))])
+          (cond
+            [(and first-is-space (empty? storage)) (iter '() (rest cs))]
+            [first-is-space (cons (reverse storage) (iter '() (rest cs)))]
+            [else (iter (cons (first cs) storage) (rest cs))]))))
+  (iter '() mdchars))
+
+(define (lex-chars state chars)
+  (match chars
     ['() '()]
-    [(list-rest (run _ '()) more-runs) (parse-runs more-runs)]
-    [(list (run state words)) (parse-words state words)]
-    [(list-rest (run state1 words1) (run state2 words2) more-runs)
-     (if (not (or (equal? (length words1) 1)
-                  (and (non-empty-string? (last words1))
-                       (non-empty-string? (first words2)))))
-         (append (parse-words state1 words1) (parse-runs (rest runs)))
-         (let* ([new-run2 (run state2 (rest words2))]
-                [new-rest-runs (cons new-run2 more-runs)])
-           (printf "pr | mashing ~a and ~a\n" (last words1) (first words2))
-           (append (parse-words state1 (drop-right words1 1))
-                   (list (hybrid-word state1 state2 (last words1) (first words2)))
-                   (parse-runs new-rest-runs))))]))
+    [(list-rest #\* #\* #\* tail) (match state
+                                    ['bolditalic (lex-chars 'normal tail)]
+                                    ['normal (lex-chars 'bolditalic tail)])]
+    [(list-rest #\* #\* tail) (match state
+                                ['normal (lex-chars 'bold tail)]
+                                ['bold (lex-chars 'normal tail)]
+                                ['italic (lex-chars 'bolditalic tail)]
+                                ['bolditalic (lex-chars 'italic tail)])]
+    [(list-rest #\* tail) (match state
+                            ['normal (lex-chars 'italic tail)]
+                            ['italic (lex-chars 'normal tail)]
+                            ['bold (lex-chars 'bolditalic tail)]
+                            ['bolditalic (lex-chars 'bold tail)])]
+    [(list-rest #\\ #\* tail) (cons (mdchar state #\*) (lex-chars state tail))]
+    [(list-rest #\` tail) (match state
+                            ['normal (lex-chars 'tt tail)]
+                            ['tt (lex-chars 'normal tail)]
+                            ['bold (lex-chars 'boldtt tail)]
+                            ['boldtt (lex-chars 'bold tail)])]
+    [(list-rest #\\ #\` tail) (cons (mdchar state #\`) (lex-chars state tail))]
+    [(list-rest c tail) (cons (mdchar state c) (lex-chars state tail))]))
