@@ -71,7 +71,7 @@
     (item #:bullet (bt (string-append i2 ".")) x0 ...)))
 
 (define (title-slide title . subtitles)
-  (let ([x0 (with-size 40 (para #:align 'left (bold-italic-title title)))]
+  (let ([x0 (with-size 40 (para #:align 'left (parse-markdown-string title #:state 'bolditalic)))]
         [rest (map
                (lambda (st) (colorize (para #:align 'left (with-size 36 (bt st))) "gray"))
                subtitles)])
