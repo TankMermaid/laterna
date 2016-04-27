@@ -4,17 +4,20 @@
          ;(prefix-in sre: parser-tools/lex-sre)
          parser-tools/yacc)
 
-(define-tokens a (LETTER FLAG))
+(define-tokens a (LETTER TITLE))
 (define-empty-tokens b (EOF BREAK))
 
 (define lexer1
   (lexer
-   [(union "% " "# " "## ") (token-FLAG lexeme)]
+   [(union "# " "## ") (token-TITLE lexeme)]
    [(char-complement "\n") (token-LETTER lexeme)]
    [(eof) (token-EOF)]
    [(repetition 1 +inf.0 "\n") (token-BREAK)]))
 
 (define-struct line-exp (flag content))
+(define-struct meta-exp (content))
+(define-struct slide-exp (title content))
+(define-struct title-exp (flag title))
 
 (define parser1
   (parser
@@ -23,10 +26,16 @@
    (tokens a b)
    (error (lambda args (map displayln args)))
    (grammar
+    (slides ;((% line slides) (cons (meta-exp $2) $4))
+            ((slide slides) (cons $1 $2))
+            ((slide) (list $1)))
+    (slide ((title) `(slide/title $1 '()))
+           ((title content) (slide-exp $1 $2)))
+    (title ((TITLE line) (title-exp $1 $2)))
     (lines ((line BREAK lines) (cons $1 $3))
            ((line BREAK) (list $1))
            ((line) (list $1)))
-    (line ((FLAG content) (line-exp $1 $2))
+    (line ;((FLAG content) (line-exp $1 $2))
           ((content) (line-exp 'content $1)))
     (content ((LETTER content) (cons $1 $2))
              ((LETTER) (list $1)))
