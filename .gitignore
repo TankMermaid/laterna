@@ -1,1 +1,4 @@
 *.rkt~
+*.scrbl~
+.*.swp
+compiled/
